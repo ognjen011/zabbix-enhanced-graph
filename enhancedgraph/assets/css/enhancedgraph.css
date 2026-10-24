@@ -1,0 +1,71 @@
+/* Enhanced graph theme - overlay on top of classic Zabbix graph images. */
+
+.eg-overlay {
+	position: absolute;
+	z-index: 1;
+	/* Mouse events go through to the classic image so Zabbix zoom/selection keeps working. */
+	pointer-events: none;
+	text-align: left;
+	line-height: normal;
+}
+
+.eg-overlay .eg-overlay-graph {
+	display: none;
+}
+
+.eg-overlay.eg-active .eg-overlay-graph {
+	display: block;
+}
+
+.eg-overlay .eg-graph-svg {
+	pointer-events: none;
+}
+
+/* Legend rows can be clicked to hide/show a series. */
+.eg-overlay .eg-graph-legend {
+	pointer-events: auto;
+}
+
+.eg-overlay .eg-toggle {
+	pointer-events: auto;
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	z-index: 2;
+	font: 11px Arial, Tahoma, Verdana, sans-serif;
+	padding: 2px 7px;
+	border-radius: 2px;
+	border: 1px solid rgba(128, 128, 128, 0.45);
+	background: rgba(255, 255, 255, 0.85);
+	color: #1f2c33;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+
+html[color-scheme="dark"] .eg-overlay .eg-toggle {
+	background: rgba(30, 38, 46, 0.85);
+	color: #f2f2f2;
+}
+
+/* Show the switch when hovering the graph (works for both the overlay and the classic image under it). */
+*:hover > .eg-overlay .eg-toggle,
+.eg-overlay .eg-toggle:focus-visible {
+	opacity: 1;
+}
+
+.eg-overlay.eg-toggle-hidden .eg-toggle {
+	display: none;
+}
+
+/* Hide the classic image as soon as it is replaced, before the new drawing is refreshed. */
+*:has(> .eg-overlay.eg-active) > img {
+	opacity: 0 !important;
+}
+
+/* Enhanced mode: hide classic graph images from the moment they start loading; the script shows them again
+   (class eg-classic) for graphs it does not replace, and after a timeout as a safety net. */
+html.eg-on img[src*="chart.php?"]:not(.eg-classic),
+html.eg-on img[src*="chart2.php?"]:not(.eg-classic) {
+	opacity: 0;
+}

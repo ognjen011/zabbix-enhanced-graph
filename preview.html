@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en" color-scheme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enhanced graph preview</title>
+<style>
+	:root {
+		--page-bg: #ebeef0;
+		--widget-bg: #ffffff;
+		--widget-border: #dfe4e7;
+		--widget-head: #1f2c33;
+		--toolbar-bg: #ffffff;
+		--text: #1f2c33;
+		--muted: #687780;
+		--accent: #0275b8;
+	}
+	html[color-scheme="dark"] {
+		--page-bg: #0e1012;
+		--widget-bg: #1e262e;
+		--widget-border: #383838;
+		--widget-head: #f2f2f2;
+		--toolbar-bg: #1e262e;
+		--text: #f2f2f2;
+		--muted: #9aa5ae;
+		--accent: #4796c4;
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		background: var(--page-bg);
+		color: var(--text);
+		font-family: Arial, Tahoma, Verdana, sans-serif;
+		font-size: 12px;
+	}
+	.toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 18px;
+		align-items: center;
+		padding: 10px 16px;
+		background: var(--toolbar-bg);
+		border-bottom: 1px solid var(--widget-border);
+		position: sticky;
+		top: 0;
+		z-index: 20;
+	}
+	.toolbar h1 { font-size: 15px; margin: 0 12px 0 0; font-weight: 600; }
+	.toolbar .group { display: flex; align-items: center; gap: 6px; }
+	.toolbar .label { color: var(--muted); }
+	.seg { display: inline-flex; border: 1px solid var(--widget-border); border-radius: 3px; overflow: hidden; }
+	.seg button {
+		border: 0;
+		background: transparent;
+		color: var(--text);
+		padding: 5px 10px;
+		font: inherit;
+		cursor: pointer;
+	}
+	.seg button + button { border-left: 1px solid var(--widget-border); }
+	.seg button.active { background: var(--accent); color: #fff; }
+	.note { color: var(--muted); padding: 10px 16px 0 16px; max-width: 1100px; line-height: 1.5; }
+	.dashboard {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+		gap: 10px;
+		padding: 10px 16px 24px 16px;
+	}
+	.widget {
+		background: var(--widget-bg);
+		border: 1px solid var(--widget-border);
+		border-radius: 2px;
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	.widget.wide { grid-column: 1 / -1; }
+	.widget-head {
+		padding: 7px 10px;
+		font-weight: bold;
+		color: var(--widget-head);
+		border-bottom: 1px solid var(--widget-border);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.widget-body { height: 300px; padding: 6px 8px; min-width: 0; }
+	.widget.wide .widget-body { height: 340px; }
+
+	/* Time selector - modelled on the Zabbix dashboard time picker */
+	.tsel-bar {
+		display: flex;
+		justify-content: flex-end;
+		padding: 8px 16px 0 16px;
+	}
+	.tsel { position: relative; }
+	.tsel-row { display: flex; align-items: stretch; gap: 4px; }
+	.tsel-nav, .tsel-tab, .tsel-apply {
+		font: inherit;
+		color: var(--text);
+		background: var(--widget-bg);
+		border: 1px solid var(--widget-border);
+		border-radius: 2px;
+		padding: 5px 9px;
+		cursor: pointer;
+	}
+	.tsel-nav { font-size: 15px; line-height: 1; padding: 4px 9px; }
+	.tsel-zoom { font-size: 12px; }
+	.tsel-nav:hover, .tsel-tab:hover { border-color: var(--accent); }
+	.tsel-nav:disabled { opacity: 0.4; cursor: default; border-color: var(--widget-border); }
+	.tsel-tab { display: inline-flex; align-items: center; gap: 6px; min-width: 150px; color: var(--accent); }
+	.tsel-tab[aria-expanded="true"] { border-bottom-color: var(--widget-bg); border-radius: 2px 2px 0 0; position: relative; z-index: 31; }
+	.tsel-clock { flex: 0 0 auto; }
+	.tsel-panel {
+		position: absolute;
+		right: 0;
+		top: calc(100% - 1px);
+		z-index: 30;
+		display: flex;
+		gap: 24px;
+		background: var(--widget-bg);
+		border: 1px solid var(--widget-border);
+		box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+		padding: 14px 16px;
+		width: max-content;
+		max-width: calc(100vw - 32px);
+	}
+	.tsel-panel[hidden] { display: none; }
+	.tsel-form {
+		display: grid;
+		grid-template-columns: auto 190px;
+		gap: 8px 8px;
+		align-content: start;
+		padding-right: 24px;
+		border-right: 1px solid var(--widget-border);
+	}
+	.tsel-form label { align-self: center; color: var(--muted); text-align: right; }
+	.tsel-form input {
+		font: inherit;
+		color: var(--text);
+		background: var(--page-bg);
+		border: 1px solid var(--widget-border);
+		border-radius: 2px;
+		padding: 5px 6px;
+	}
+	.tsel-form input:focus { outline: none; border-color: var(--accent); }
+	.tsel-form input.invalid { border-color: #e45959; }
+	.tsel-apply {
+		grid-column: 2;
+		justify-self: start;
+		background: var(--accent);
+		border-color: var(--accent);
+		color: #fff;
+		padding: 5px 16px;
+	}
+	.tsel-error { grid-column: 1 / -1; color: #e45959; min-height: 14px; max-width: 260px; }
+	.tsel-quick { display: grid; grid-template-columns: repeat(4, auto); gap: 0 28px; }
+	.tsel-quick ul { list-style: none; margin: 0; padding: 0; }
+	.tsel-quick li { margin: 0 0 5px 0; }
+	.tsel-quick a {
+		color: var(--accent);
+		text-decoration: none;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.tsel-quick a:hover { text-decoration: underline; }
+	.tsel-quick a.selected { color: var(--text); font-weight: bold; text-decoration: none; cursor: default; }
+	@media (max-width: 900px) {
+		.tsel-panel { flex-direction: column; }
+		.tsel-form { border-right: 0; padding-right: 0; border-bottom: 1px solid var(--widget-border); padding-bottom: 12px; }
+		.tsel-quick { grid-template-columns: repeat(2, auto); gap: 8px 28px; }
+	}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+	<h1>Enhanced graph - preview</h1>
+	<div class="group">
+		<span class="label">Zabbix theme</span>
+		<div class="seg" id="theme">
+			<button data-v="light" class="active">Blue (light)</button>
+			<button data-v="dark">Dark</button>
+		</div>
+	</div>
+	<div class="group">
+		<span class="label">Graph style</span>
+		<div class="seg" id="style">
+			<button data-v="area" class="active">Area</button>
+			<button data-v="line">Line</button>
+			<button data-v="stacked">Stacked</button>
+		</div>
+	</div>
+	<div class="group">
+		<span class="label">Traffic in/out</span>
+		<div class="seg" id="mirror">
+			<button data-v="off" class="active">Overlay</button>
+			<button data-v="on">Mirrored</button>
+		</div>
+	</div>
+</div>
+
+<!-- Zabbix-style time selector (same ranges and relative syntax as the Zabbix dashboard time picker) -->
+<div class="tsel-bar">
+	<div class="tsel">
+		<div class="tsel-row">
+			<button class="tsel-nav" id="ts-back" title="Previous period" aria-label="Previous period">&#8249;</button>
+			<button class="tsel-nav tsel-zoom" id="ts-zoom" title="Zoom out">Zoom out</button>
+			<button class="tsel-nav" id="ts-fwd" title="Next period" aria-label="Next period">&#8250;</button>
+			<button class="tsel-tab" id="ts-tab" aria-expanded="false">
+				<svg class="tsel-clock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+					<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+					<path d="M8 4.2V8l2.6 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+				</svg>
+				<span id="ts-label">Last 1 day</span>
+			</button>
+		</div>
+		<div class="tsel-panel" id="ts-panel" hidden>
+			<div class="tsel-form">
+				<label for="ts-from">From</label>
+				<input id="ts-from" type="text" autocomplete="off" spellcheck="false" placeholder="YYYY-MM-DD hh:mm:ss">
+				<label for="ts-to">To</label>
+				<input id="ts-to" type="text" autocomplete="off" spellcheck="false" placeholder="YYYY-MM-DD hh:mm:ss">
+				<button class="tsel-apply" id="ts-apply">Apply</button>
+				<div class="tsel-error" id="ts-error"></div>
+			</div>
+			<div class="tsel-quick" id="ts-quick"></div>
+		</div>
+	</div>
+</div>
+
+<div class="note">
+	Sample data only. This page uses the exact same graph code as the Zabbix widget
+	(<code>enhancedgraph/assets/js/class.enhancedgraph.js</code>). Hover the graphs for values, click a legend row to hide or show
+	a series. <b>Drag across a graph to zoom in, double-click to zoom out</b> &ndash; like in Zabbix, every graph on the
+	dashboard follows the new time period. The time selector on the right works like the Zabbix one (quick ranges,
+	From/To with relative times such as <code>now-1d/d</code>, previous/next period and zoom out); in Zabbix the widget
+	uses the real dashboard time selector. In Zabbix the widget follows your user theme automatically (or can be forced to light/dark per widget).
+</div>
+
+<div class="dashboard" id="dashboard"></div>
+
+<script src="enhancedgraph/assets/js/class.enhancedgraph.js"></script>
+<script>
+(function () {
+	const now0 = Math.floor(Date.now() / 1000);
+	const state = {theme: 'light', style: 'area', mirror: 'off', from_str: 'now-1d', to_str: 'now', from: 0, to: 0};
+
+	// ------------------------------------------------------------------ Zabbix time selector logic
+
+	// Same quick ranges, order and columns as the Zabbix dashboard time picker.
+	const QUICK_RANGES = [
+		[
+			['now-2d', 'now', 'Last 2 days'], ['now-7d', 'now', 'Last 7 days'], ['now-30d', 'now', 'Last 30 days'],
+			['now-3M', 'now', 'Last 3 months'], ['now-6M', 'now', 'Last 6 months'], ['now-1y', 'now', 'Last 1 year'],
+			['now-2y', 'now', 'Last 2 years']
+		],
+		[
+			['now-1d/d', 'now-1d/d', 'Yesterday'], ['now-2d/d', 'now-2d/d', 'Day before yesterday'],
+			['now-1w/d', 'now-1w/d', 'This day last week'], ['now-1w/w', 'now-1w/w', 'Previous week'],
+			['now-1M/M', 'now-1M/M', 'Previous month'], ['now-1y/y', 'now-1y/y', 'Previous year']
+		],
+		[
+			['now/d', 'now/d', 'Today'], ['now/d', 'now', 'Today so far'], ['now/w', 'now/w', 'This week'],
+			['now/w', 'now', 'This week so far'], ['now/M', 'now/M', 'This month'], ['now/M', 'now', 'This month so far'],
+			['now/y', 'now/y', 'This year'], ['now/y', 'now', 'This year so far']
+		],
+		[
+			['now-5m', 'now', 'Last 5 minutes'], ['now-15m', 'now', 'Last 15 minutes'],
+			['now-30m', 'now', 'Last 30 minutes'], ['now-1h', 'now', 'Last 1 hour'], ['now-3h', 'now', 'Last 3 hours'],
+			['now-6h', 'now', 'Last 6 hours'], ['now-12h', 'now', 'Last 12 hours'], ['now-1d', 'now', 'Last 1 day']
+		]
+	];
+
+	const MIN_PERIOD = 60;
+
+	function shiftDate(d, n, unit) {
+		switch (unit) {
+			case 's': d.setSeconds(d.getSeconds() + n); break;
+			case 'm': d.setMinutes(d.getMinutes() + n); break;
+			case 'h': d.setHours(d.getHours() + n); break;
+			case 'd': d.setDate(d.getDate() + n); break;
+			case 'w': d.setDate(d.getDate() + 7 * n); break;
+			case 'M': d.setMonth(d.getMonth() + n); break;
+			case 'y': d.setFullYear(d.getFullYear() + n); break;
+		}
+	}
+
+	function startOf(d, unit) {
+		switch (unit) {
+			case 'y': d.setMonth(0, 1); d.setHours(0, 0, 0, 0); break;
+			case 'M': d.setDate(1); d.setHours(0, 0, 0, 0); break;
+			case 'w': d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); d.setHours(0, 0, 0, 0); break; // Monday
+			case 'd': d.setHours(0, 0, 0, 0); break;
+			case 'h': d.setMinutes(0, 0, 0); break;
+			case 'm': d.setSeconds(0, 0); break;
+			case 's': d.setMilliseconds(0); break;
+		}
+	}
+
+	/**
+	 * Parse a Zabbix time expression: "now", "now-1d", "now-1w/w", "now/d", or "YYYY-MM-DD[ hh:mm[:ss]]".
+	 * Rounding goes to the start of the unit for "from" and to the end of the unit for "to", like Zabbix.
+	 * Returns a unix timestamp or null.
+	 */
+	function parseTime(expr, is_to) {
+		const s = String(expr).trim();
+		const abs = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+
+		if (abs) {
+			const [, y, mo, d, h, mi, se] = abs;
+			const date = new Date(+y, +mo - 1, +d, h === undefined ? (is_to ? 23 : 0) : +h,
+				mi === undefined ? (is_to ? 59 : 0) : +mi, se === undefined ? (is_to && h === undefined ? 59 : 0) : +se);
+
+			return isNaN(date) ? null : Math.floor(date.getTime() / 1000);
+		}
+
+		const rel = s.match(/^now((?:\s*[+-]\s*\d+\s*[smhdwMy])*)(?:\/([smhdwMy]))?$/);
+
+		if (!rel) {
+			return null;
+		}
+
+		const d = new Date(now0 * 1000);
+
+		for (const [, sign, n, unit] of rel[1].matchAll(/([+-])\s*(\d+)\s*([smhdwMy])/g)) {
+			shiftDate(d, (sign === '-' ? -1 : 1) * Number(n), unit);
+		}
+
+		if (rel[2]) {
+			startOf(d, rel[2]);
+
+			if (is_to) {
+				shiftDate(d, 1, rel[2]);
+				d.setSeconds(d.getSeconds() - 1);
+			}
+		}
+
+		return Math.floor(d.getTime() / 1000);
+	}
+
+	function formatAbs(ts) {
+		return EnhancedGraph.formatDateTime(ts);
+	}
+
+	function quickLabel(from_str, to_str) {
+		for (const col of QUICK_RANGES) {
+			for (const [f, t, label] of col) {
+				if (f === from_str && t === to_str) {
+					return label;
+				}
+			}
+		}
+		return null;
+	}
+
+	function setPeriod(from_str, to_str) {
+		const from = parseTime(from_str, false);
+		const to = parseTime(to_str, true);
+
+		if (from === null || to === null) {
+			return 'Invalid date.';
+		}
+		if (to - from < MIN_PERIOD) {
+			return 'Minimum time period to display is 1 minute.';
+		}
+
+		state.from_str = from_str;
+		state.to_str = to_str;
+		state.from = from;
+		state.to = to;
+
+		updateSelector();
+		build();
+
+		return null;
+	}
+
+	// Moves made by navigation / zoom become absolute dates, as in Zabbix.
+	function setAbsolute(from, to) {
+		to = Math.min(to, now0);
+		from = Math.min(from, to - MIN_PERIOD);
+		setPeriod(formatAbs(from), formatAbs(to));
+	}
+
+	const ts = {
+		tab: document.getElementById('ts-tab'),
+		label: document.getElementById('ts-label'),
+		panel: document.getElementById('ts-panel'),
+		from: document.getElementById('ts-from'),
+		to: document.getElementById('ts-to'),
+		apply: document.getElementById('ts-apply'),
+		error: document.getElementById('ts-error'),
+		quick: document.getElementById('ts-quick'),
+		back: document.getElementById('ts-back'),
+		fwd: document.getElementById('ts-fwd'),
+		zoom: document.getElementById('ts-zoom')
+	};
+
+	function updateSelector() {
+		ts.label.textContent = quickLabel(state.from_str, state.to_str)
+			|| (formatAbs(state.from) + ' - ' + formatAbs(state.to));
+		ts.from.value = state.from_str;
+		ts.to.value = state.to_str;
+		ts.from.classList.remove('invalid');
+		ts.to.classList.remove('invalid');
+		ts.error.textContent = '';
+		ts.fwd.disabled = state.to >= now0;
+
+		for (const a of ts.quick.querySelectorAll('a')) {
+			a.classList.toggle('selected', a.dataset.from === state.from_str && a.dataset.to === state.to_str);
+		}
+	}
+
+	function buildQuickRanges() {
+		for (const col of QUICK_RANGES) {
+			const ul = document.createElement('ul');
+
+			for (const [f, t, label] of col) {
+				const li = document.createElement('li');
+				const a = document.createElement('a');
+				a.textContent = label;
+				a.dataset.from = f;
+				a.dataset.to = t;
+				a.addEventListener('click', () => {
+					setPeriod(f, t);
+					togglePanel(false);
+				});
+				li.appendChild(a);
+				ul.appendChild(li);
+			}
+
+			ts.quick.appendChild(ul);
+		}
+	}
+
+	function togglePanel(open = ts.panel.hidden) {
+		ts.panel.hidden = !open;
+		ts.tab.setAttribute('aria-expanded', String(open));
+
+		if (open) {
+			updateSelector();
+		}
+	}
+
+	ts.tab.addEventListener('click', () => togglePanel());
+
+	ts.apply.addEventListener('click', () => {
+		const from_ok = parseTime(ts.from.value, false) !== null;
+		const to_ok = parseTime(ts.to.value, true) !== null;
+
+		ts.from.classList.toggle('invalid', !from_ok);
+		ts.to.classList.toggle('invalid', !to_ok);
+
+		const error = setPeriod(ts.from.value.trim(), ts.to.value.trim());
+
+		if (error) {
+			ts.error.textContent = error;
+			return;
+		}
+
+		togglePanel(false);
+	});
+
+	for (const input of [ts.from, ts.to]) {
+		input.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				ts.apply.click();
+			}
+		});
+	}
+
+	ts.back.addEventListener('click', () => {
+		const p = state.to - state.from;
+		setAbsolute(state.from - p, state.to - p);
+	});
+
+	ts.fwd.addEventListener('click', () => {
+		const p = state.to - state.from;
+		const to = Math.min(now0, state.to + p);
+		setAbsolute(to - p, to);
+	});
+
+	function zoomOut() {
+		const p = state.to - state.from;
+		setAbsolute(state.from - p / 2, state.to + p / 2);
+	}
+
+	ts.zoom.addEventListener('click', zoomOut);
+
+	document.addEventListener('click', (e) => {
+		if (!ts.panel.hidden && !e.target.closest('.tsel')) {
+			togglePanel(false);
+		}
+	});
+
+	document.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') {
+			togglePanel(false);
+		}
+	});
+
+	// Deterministic pseudo-random so the preview looks the same every time.
+	let seed = 42;
+	const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+	function makeSeries(from, to, points, fn) {
+		const step = (to - from) / points;
+		const out = [];
+
+		for (let i = 0; i <= points; i++) {
+			const t = Math.round(from + i * step);
+
+			// No data in the future (e.g. "This week" runs until Sunday night).
+			if (t > now0) {
+				break;
+			}
+
+			seed = ((Math.imul(Math.floor(t / 60), 2654435761) >>> 0) % 2147483646) + 1; rnd(); rnd();
+			const v = Math.max(0, fn(t, i));
+			out.push([t, v, v * (0.9 - rnd() * 0.05), v * (1.1 + rnd() * 0.05)]);
+		}
+
+		return out;
+	}
+
+	const daily = (t) => {
+		const h = new Date(t * 1000).getHours() + new Date(t * 1000).getMinutes() / 60;
+		return Math.max(0.08, Math.sin((h - 6) / 24 * Math.PI * 2) * 0.5 + 0.5);
+	};
+
+	function datasets(from, to) {
+		const n = 400;
+		const period = to - from;
+
+		return [
+			{
+				title: 'core-router-1: Interface ae0.100 (Uplink): Traffic',
+				wide: true,
+				series: [
+					{name: 'Bits received', host: '', units: 'bps', color: '#00d16a',
+						points: makeSeries(from, to, n, (t) => 420e6 * daily(t) + 60e6 * rnd() + 30e6)},
+					{name: 'Bits sent', host: '', units: 'bps', color: '#1e90ff', mirror: 'out',
+						points: makeSeries(from, to, n, (t) => 160e6 * daily(t) + 30e6 * rnd() + 15e6)}
+				]
+			},
+			{
+				title: 'branch-cpe-01: ICMP response time',
+				series: [
+					{name: 'ICMP response time', host: '', units: 's', color: '#13c2c2',
+						points: makeSeries(from, to, n, (t, i) => 0.011 + 0.006 * daily(t) + 0.004 * rnd()
+							+ (Math.floor(t / 1800) % 29 === 0 ? 0.045 : 0))},
+					{name: 'ICMP loss', host: '', units: '%', color: '#ff4d4f',
+						points: makeSeries(from, to, n, (t, i) => (Math.floor(t / 1800) % 41 === 0 ? 20 : 0))}
+				]
+			},
+			{
+				title: 'zabbix-server: CPU utilization',
+				stack: true,
+				series: [
+					{name: 'CPU user time', units: '%', color: '#00d16a',
+						points: makeSeries(from, to, n, (t) => 18 * daily(t) + 6 * rnd() + 4)},
+					{name: 'CPU system time', units: '%', color: '#ff8c1a',
+						points: makeSeries(from, to, n, (t) => 7 * daily(t) + 3 * rnd() + 2)},
+					{name: 'CPU iowait time', units: '%', color: '#8c6cff',
+						points: makeSeries(from, to, n, (t) => 22 * daily(t) + 12 * rnd() + 8)}
+				]
+			},
+			{
+				title: 'zabbix-proxy-1: Memory',
+				series: [
+					{name: 'Used memory', units: 'B', color: '#1e90ff',
+						points: makeSeries(from, to, n, (t) => 7.2e9 + 1.1e9 * daily(t) + 0.3e9 * rnd())},
+					{name: 'Available memory', units: 'B', color: '#a5d22d',
+						points: makeSeries(from, to, n, (t) => 3.6e9 - 1.0e9 * daily(t) + 0.2e9 * rnd())}
+				]
+			},
+			{
+				title: 'zabbix-proxy-2: Zabbix proxy queue',
+				series: [
+					{name: 'Values waiting more than 5 minutes', units: '', color: '#ff8c1a',
+						points: makeSeries(from, to, n, (t, i) => 40 * daily(t) + 25 * rnd() + (t > now0 - 5 * 3600 && t < now0 - 4 * 3600 ? 180 : 0))},
+					{name: 'Values waiting more than 10 minutes', units: '', color: '#d63fd6',
+						points: makeSeries(from, to, n, (t, i) => 10 * daily(t) + 8 * rnd() + (t > now0 - 5 * 3600 && t < now0 - 4 * 3600 ? 90 : 0))}
+				]
+			}
+		];
+	}
+
+	// Working time like the Zabbix default "1-5,09:00-18:00" (Mon-Fri 09:00-18:00), shaded outside of it.
+	function workPeriods(from, to) {
+		const out = [];
+		const d = new Date(from * 1000);
+		d.setHours(0, 0, 0, 0);
+
+		for (; d.getTime() / 1000 < to; d.setDate(d.getDate() + 1)) {
+			if (d.getDay() >= 1 && d.getDay() <= 5) {
+				const s = new Date(d); s.setHours(9, 0, 0, 0);
+				const e = new Date(d); e.setHours(18, 0, 0, 0);
+				out.push([s.getTime() / 1000, e.getTime() / 1000]);
+			}
+		}
+
+		return out;
+	}
+
+	const dashboard = document.getElementById('dashboard');
+	const graphs = [];
+
+	function build() {
+		dashboard.innerHTML = '';
+		graphs.length = 0;
+
+		for (const ds of datasets(state.from, state.to)) {
+			const widget = document.createElement('div');
+			widget.className = 'widget' + (ds.wide ? ' wide' : '');
+
+			const head = document.createElement('div');
+			head.className = 'widget-head';
+			head.textContent = ds.title;
+
+			const body = document.createElement('div');
+			body.className = 'widget-body';
+
+			widget.append(head, body);
+			dashboard.appendChild(widget);
+
+			const graph = new EnhancedGraph(body, {
+				theme: state.theme, title: '', show_header: true,
+				// Same behaviour as in Zabbix: drag = zoom in for the whole dashboard, double-click = zoom out.
+				zoomable: true,
+				onZoom: ({from_offset, to_offset}) => setAbsolute(state.from + from_offset, state.to - to_offset),
+				onZoomOut: zoomOut
+			});
+
+			graph.setSize(body.clientWidth - 16, body.clientHeight - 12);
+			graph.setData({
+				time_from: state.from,
+				time_to: state.to,
+				work_periods: (state.to - state.from) <= 92 * 86400 ? workPeriods(state.from, state.to) : null,
+				graph_type: state.style === 'area' && ds.stack ? 'stacked' : state.style,
+				series: ds.series.map(x => ({...x, mirror: x.mirror === 'out' && state.mirror === 'on'}))
+			});
+
+			graphs.push({graph, body});
+		}
+	}
+
+	function resizeAll() {
+		for (const {graph, body} of graphs) {
+			graph.setSize(body.clientWidth - 16, body.clientHeight - 12);
+		}
+	}
+
+	function bindSeg(id, key, transform = (v) => v) {
+		const seg = document.getElementById(id);
+
+		seg.addEventListener('click', (e) => {
+			const btn = e.target.closest('button');
+
+			if (!btn) {
+				return;
+			}
+
+			seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+			state[key] = transform(btn.dataset.v);
+
+			if (key === 'theme') {
+				document.documentElement.setAttribute('color-scheme', state.theme);
+			}
+
+			build();
+		});
+	}
+
+	bindSeg('theme', 'theme');
+	bindSeg('style', 'style');
+	bindSeg('mirror', 'mirror');
+
+	let resize_timer = null;
+	window.addEventListener('resize', () => {
+		clearTimeout(resize_timer);
+		resize_timer = setTimeout(resizeAll, 100);
+	});
+
+	buildQuickRanges();
+	setPeriod(state.from_str, state.to_str);
+})();
+</script>
+</body>
+</html>

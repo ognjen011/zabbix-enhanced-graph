@@ -1,0 +1,20 @@
+{
+	"manifest_version": 2.0,
+	"id": "enhancedgraph",
+	"type": "module",
+	"name": "Enhanced graph theme",
+	"namespace": "EnhancedGraph",
+	"version": "2.0",
+	"author": "Ognjen Sijan",
+	"description": "Redraws the standard Zabbix graphs (Monitoring > Graphs, Latest data graphs, classic graph widgets) with a clean look: filled areas, Min/Max/Average/Last legend, working time, light/dark theme. Read-only. Disable the module to return to the classic graphs.",
+	"actions": {
+		"enhancedgraph.data": {
+			"class": "GraphData",
+			"layout": "layout.json"
+		}
+	},
+	"assets": {
+		"css": ["enhancedgraph.css"],
+		"js": ["class.enhancedgraph.js", "enhancedgraph.theme.js"]
+	}
+}
